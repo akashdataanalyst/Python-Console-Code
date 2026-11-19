@@ -1,0 +1,101 @@
+import frappe
+from frappe.utils import now_datetime
+
+name = "MNT-2026-03396"
+
+try:
+    frappe.db.rollback()
+
+    doc = frappe.get_doc("Maintenance Ticket", name)
+
+    print("Ticket:", doc.name)
+    print("Initial Status:", doc.status)
+
+    # STEP 1: Open -> Inspection
+    if doc.status == "Open":
+        doc.inspection_done_by = frappe.session.user
+        doc.inspection_time = now_datetime()
+        doc.inspection_observation = "Inspection completed"
+        doc.status = "Inspection"
+
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+        print("Moved to Inspection")
+
+    # Fresh document
+    doc = frappe.get_doc("Maintenance Ticket", name)
+
+    # STEP 2: Inspection -> In Progress
+    if doc.status == "Inspection":
+        if not doc.inspection_done_by:
+            doc.inspection_done_by = frappe.session.user
+
+        if not doc.inspection_time:
+            doc.inspection_time = now_datetime()
+
+        if not doc.inspection_observation:
+            doc.inspection_observation = "Inspection completed"
+
+        doc.status = "In Progress"
+        doc.actual_start_time = now_datetime()
+
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+        print("Moved to In Progress")
+
+    # Fresh document
+    doc = frappe.get_doc("Maintenance Ticket", name)
+
+    # STEP 3: Save actual completion details
+    if doc.status == "In Progress":
+        if not doc.actual_start_time:
+            frappe.throw("Actual Start Time missing.")
+
+        doc.actual_end_time = now_datetime()
+        doc.work_done = "Done"
+
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+        print("Actual completion details saved")
+
+    # Fresh document
+    doc = frappe.get_doc("Maintenance Ticket", name)
+
+    # STEP 4: In Progress -> Completed
+    if doc.status == "In Progress":
+        doc.status = "Completed"
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+        print("Moved to Completed")
+
+    # Fresh document
+    doc = frappe.get_doc("Maintenance Ticket", name)
+
+    # STEP 5: Completed -> Closed
+    if doc.status == "Completed":
+        doc.closure_remarks = "done"
+        doc.resolved_confirmation = 1
+        doc.status = "Closed"
+
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+        print("Moved to Closed")
+
+    # Final verification
+    doc = frappe.get_doc("Maintenance Ticket", name)
+
+    print("\n========== FINAL DETAILS ==========")
+    print("Ticket:", doc.name)
+    print("Final Status:", doc.status)
+    print("Inspection By:", doc.inspection_done_by)
+    print("Inspection Time:", doc.inspection_time)
+    print("Actual Start:", doc.actual_start_time)
+    print("Actual End:", doc.actual_end_time)
+    print("Work Done:", doc.work_done)
+    print("Closure Remarks:", doc.closure_remarks)
+    print("Resolved Confirmation:", doc.resolved_confirmation)
+
+except Exception:
+    frappe.db.rollback()
+    print("\nERROR: Ticket update failed.")
+    raise
